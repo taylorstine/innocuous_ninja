@@ -24,18 +24,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(app.router);
 
 
-app.get("/", sendRequestToSite, parseRequest, function(req, res){
+app.get("/categories", sendRequestToSite, parseRequest, function(req, res){
   res.end("Hello there!");
 });
-
-
 
 function sendRequestToSite (req, res, next){
   res.write("Hey there from middleware one!\n");
 
   request('http://www.ems.com/',
           function(error, response, body){
-            res.write("Request returned!\n");
             if (!error && response.statusCode === 200){
               req.body = body;
             }else{
@@ -50,18 +47,22 @@ function parseRequest(req, res, next){
   res.write("Hey there from middleware two!\n");
   if (req.body){
     $ = cheerio.load(req.body);
-    var retval = [];
+    var retval = {};
     var index = 0;
+    retval.title = $("title").text();
     var length = $("#nav1").children().length;
     $("#nav1").children().each(function(index){
-      var title = $(this).find("span").first().html();
+      var categoryTitle = $(this).find("span").first().text();
       var urlString = $(this).find("a").first().attr('href');
       var id = url.parse(urlString).query.split("=")[1];
       var href = "/categories/" + id; 
-      unescape(title);
-      
-      retval.push(new Category(href, id, title));
+
+      if (!retval.categories){
+        retval.categories = [];
+      }
+      retval.categories.push(new Category(href, id, categoryTitle));
       if (index+1 === length){
+        res.write(JSON.stringify(retval, {}, "\t"));
         console.log(retval);
       }
     });
