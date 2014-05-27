@@ -49,7 +49,50 @@ app.get('/cart', sendRequestToCart, parseCartRequest, function(req, res){
   res.end(JSON.stringify(req.retval, {}, '\t'));
 });
 
-app.post('/cart');
+app.post('/cart', handleCartPost,  function(req, res){
+  res.setHeader('Content-Type', 'application/json');
+  if (req.retval){
+    res.end(JSON.stringify(req.retval, {}, '\t'));
+  }else{
+    res.end()
+  }
+});
+
+
+
+function handleCartPost(req, res, next){
+  var baseUrl = 'http://www.ems.com/cartHandler/index.jsp';
+  console.log(url.parse(baseUrl));
+  var form = {};
+  form.action = req.param('action') || 'skuAddToCart';
+  form.async = false;
+  form.wlName = req.param('wlName') || '';
+  form.expressCheckout = req.param('expressCheckout') || '';
+  form.prod_0 = req.param('prod_0') || '';
+  form.qty_0 = parseInt(req.param('qty_0')) || 0;
+  
+  request.post( {
+    uri: baseUrl,
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    form: form
+  },
+                function(err, response, body){
+                  console.log('body: ' + baseUrl);
+                  console.log('body: ' + body);
+                  console.log('response: ' + response);
+                  console.log('error: ' + err);
+
+                  res.redirect('/cart');
+                  /*if (!err && response.statusCode === 200){
+                    res.redirect('/cart');
+                    }else{
+                    console.log("error: " + err + "response: " + response.statusCode);
+                    }*/
+                });
+}
+
 
 function sendRequestToCart(req, res, next){
   var baseUrl = 'http://www.ems.com/cart/index.jsp'
@@ -60,7 +103,7 @@ function sendRequestToCart(req, res, next){
         next();
       }
     }else{
-      console.log("error: " + error + "response: " + response.statusCode);
+      console.log("error: " + err + "response: " + response.statusCode);
     }
   });
 }
@@ -70,8 +113,9 @@ function parseCartRequest(req, res, next){
   retval.products = [];
   if (req.body){
     $ = cheerio.load(req.body);
-    console.log($("tr.cartInfoRow"))
-    $("tr.cartInfoRow").each(function(index){
+    console.log(req.body.match(/cartInfoRow/g));
+    $(".cartInfoRow").each(function(index){
+      console.log("cart index: " + index);
       var productTitle = $(this).find(".cartProductTitle").text();
       var productId = $(this).find("a[href~=product").split("=")[1];
       var productHref = "/products/" + productId;
@@ -82,6 +126,7 @@ function parseCartRequest(req, res, next){
       }
       retval.products.push(new Product(productHref, productId, productTitle, productPrice, productImg));
     });
+    console.log(retval);
     if (next){
       req.retval = retval;
       next();
@@ -108,26 +153,46 @@ function parseProductPageRequest(req, res, next){
   if (req.body){
     $ = cheerio.load(req.body);
     var retval = {};
-    retval.variations = [];
-    var jsonString = $('[language=javascript]').first().text().split("=")[1].trim();
-    console.log(jsonString);
-    var variations = JSON.parse(jsonString);
-    console.log(variations);
+
+    retval.sku = $('.itemNumber').text().split(':')[1].trim();
     
-    retval.forms = {};
-    retval.forms.add_to_cart = {};
-    var form = retval.forms.add_to_cart;
-    form.method = $("form[name=orderFormProd]").attr('method');
-    console.log(form.method);
+    var form = {};
     $("form[name=orderFormProd] input").each(function(index){
       var name = $(this).attr('name');
       var value = $(this).attr('value');
-      console.log("name: %s, value: %s", name, value);
       if (name){
-        console.log("valid name: " + name);
         form[name] = value;
       }
     });
+    
+    retval.variations = [];
+    var jsonString = $('[language=javascript]').first().text().split("=")[1].trim();
+    eval("var productsObj = " + jsonString);
+    if (productsObj) {
+      var skus = productsObj.skus;
+      for (var idx = 0; idx < skus.length; idx+=1){
+        
+        retval.variations.push({});
+        var variation = retval.variations[idx];
+        
+        variation.size = skus[idx].size;
+        variation.color = skus[idx].color;
+        variation.availability = skus[idx].avail;
+        variation.price = skus[idx].price;
+        
+        variation.forms = {};
+        variation.forms.add_to_cart = {};
+        for (value in form){
+          if (value.toString().match(/prod/g)){
+            variation.forms.add_to_cart[value] = retval.sku + '|' + skus[idx].sku_id;
+          }else{
+            variation.forms.add_to_cart[value] = form[value];
+          }            
+        }
+        variation.forms.add_to_cart.method = $("form[name=orderFormProd]").attr('method');
+      }
+    }
+
     req.retval = retval;
     if (next){
       next();
