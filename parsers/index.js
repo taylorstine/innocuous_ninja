@@ -1,7 +1,3 @@
-/* GET home page. */
-exports.index = function(req, res){
-  res.render('index', { title: 'Express' });
-};
 exports.categories = require('./categories.js');
 exports.family = require('./family.js');
 exports.shop = require('./shop.js');
